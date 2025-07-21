@@ -100,7 +100,7 @@ cat <<EOF > nginx.conf
 events {}
 http {
     server {
-        listen 80;
+        listen 8085;
         auth_basic "Restricted Access";
 EOF
 
