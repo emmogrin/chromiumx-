@@ -34,6 +34,7 @@ git clone https://github.com/emmogrin/chromiumx-.git
 cd chromiumx-
 chmod +x chromiumx.sh
 ./chromiumx.sh
+```
 
 🔗 Access container 1:
 http://your-vps-ip:8080
