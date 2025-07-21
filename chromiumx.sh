@@ -86,7 +86,7 @@ cat <<EOF >> docker-compose.yml
     image: nginx:alpine
     container_name: nginx
     ports:
-      - "80:80"
+      - "8085:80"
     volumes:
       - ./nginx.conf:/etc/nginx/nginx.conf:ro
       - ./htpasswd:/etc/nginx/.htpasswd:ro
