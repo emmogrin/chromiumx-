@@ -56,14 +56,14 @@ for i in $(seq 1 $COUNT); do
 
   # Handle password logic
   if [ "$PASS_OPTION" == "1" ] && [ "$i" == "1" ]; then
-    read -s -p "🔑 Enter a common password: " COMMON_PASS
+    read -p "🔑 Enter a common password: " COMMON_PASS
     echo
   fi
 
   if [ "$PASS_OPTION" == "1" ]; then
     htpasswd -b -c .htpasswd $USER $COMMON_PASS
   elif [ "$PASS_OPTION" == "2" ]; then
-    read -s -p "🔑 Enter password for $USER: " IND_PASS
+    read -p "🔑 Enter password for $USER: " IND_PASS
     echo
     htpasswd -b -c .htpasswd $USER $IND_PASS
   fi
