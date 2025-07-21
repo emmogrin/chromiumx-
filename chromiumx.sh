@@ -1,6 +1,6 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
-clear
+echo ""
 echo "┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓"
 echo "┃     🧠 @admirkhen Chromiumx     ┃"
 echo "┃     Browser Farm Script      ┃"
@@ -8,135 +8,128 @@ echo "┃     Powered by Saint Khen    ┃"
 echo "┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛"
 echo ""
 
-# Default values
-NUM_CONTAINERS=1
-MAX_CONTAINERS=10
+# --- System Check ---
+if ! command -v docker &> /dev/null; then
+  echo "🐳 Installing Docker..."
+  curl -fsSL https://get.docker.com | bash
+  usermod -aG docker $USER
+  echo "🔁 Please log out and back in or run: newgrp docker"
+  exit
+fi
 
-# Ask how many browsers to run
-read -p "🌐 How many Chromium browsers do you want to set up? [1-$MAX_CONTAINERS]: " NUM_CONTAINERS
-NUM_CONTAINERS=${NUM_CONTAINERS:-1}
-if [ "$NUM_CONTAINERS" -gt "$MAX_CONTAINERS" ]; then
-  echo "❌ Max allowed is $MAX_CONTAINERS"
+if ! command -v docker-compose &> /dev/null; then
+  echo "🔧 Installing Docker Compose..."
+  curl -L "https://github.com/docker/compose/releases/latest/download/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
+  chmod +x /usr/local/bin/docker-compose
+fi
+
+if ! command -v htpasswd &> /dev/null; then
+  echo "🔑 Installing apache2-utils for password management..."
+  apt update && apt install apache2-utils -y
+fi
+
+echo ""
+read -p "🌐 How many Chromium browsers do you want to set up? [1-10]: " COUNT
+
+if ! [[ "$COUNT" =~ ^[1-9]$|10 ]]; then
+  echo "❌ Invalid input. Enter a number between 1 and 10."
   exit 1
 fi
 
-# Ask password preference
+echo ""
 echo "🔐 Password protection options:"
 echo "1. Same password for all"
 echo "2. Different passwords for each"
 echo "3. No password"
-read -p "Choose [1/2/3]: " PASS_CHOICE
+read -p "Choose [1/2/3]: " PASS_OPTION
 
-# Prepare folders
-rm -rf chromium_farm && mkdir -p chromium_farm/nginx/conf.d
-cd chromium_farm
-touch nginx/htpasswd
+mkdir -p chromium_farm && cd chromium_farm
+rm -f docker-compose.yml
+rm -f .htpasswd
 
-# Create docker-compose.yml
 cat <<EOF > docker-compose.yml
-version: "3"
 services:
 EOF
 
-# Loop to create browser containers
-for i in $(seq 1 "$NUM_CONTAINERS"); do
-  # Find available port
-  PORT=0
-  BASE_PORT=$((3000 + i))
-  while true; do
-    ss -tuln | grep -q ":$BASE_PORT" || { PORT=$BASE_PORT; break; }
-    BASE_PORT=$((BASE_PORT + 1))
-  done
+for i in $(seq 1 $COUNT); do
+  USER="user$i"
 
-  USERNAME="user$i"
-  CONTAINER_NAME="chromium_$i"
-  VNC_PASS=""
-
-  if [ "$PASS_CHOICE" = "1" ] && [ "$i" = "1" ]; then
-    read -p "🔑 Enter the password for all users: " COMMON_PASS
+  # Handle password logic
+  if [ "$PASS_OPTION" == "1" ] && [ "$i" == "1" ]; then
+    read -s -p "🔑 Enter a common password: " COMMON_PASS
+    echo
   fi
 
-  if [ "$PASS_CHOICE" = "1" ]; then
-    VNC_PASS="$COMMON_PASS"
-  elif [ "$PASS_CHOICE" = "2" ]; then
-    read -p "🔑 Enter password for $USERNAME: " VNC_PASS
-  fi
-
-  # Add password to htpasswd if needed
-  if [ "$PASS_CHOICE" != "3" ]; then
-    htpasswd -bB nginx/htpasswd $USERNAME $VNC_PASS
+  if [ "$PASS_OPTION" == "1" ]; then
+    htpasswd -b -c .htpasswd $USER $COMMON_PASS
+  elif [ "$PASS_OPTION" == "2" ]; then
+    read -s -p "🔑 Enter password for $USER: " IND_PASS
+    echo
+    htpasswd -b -c .htpasswd $USER $IND_PASS
   fi
 
   cat <<EOF >> docker-compose.yml
-  $CONTAINER_NAME:
+  chromium_$i:
     image: browserless/chrome
-    container_name: $CONTAINER_NAME
+    container_name: chromium_$i
     ports:
-      - "$PORT:5800"
-    environment:
-      - VNC_PASSWORD=$VNC_PASS
+      - "$((3000 + i)):3000"
     restart: unless-stopped
 EOF
 
 done
 
-# NGINX reverse proxy config
-cat <<EOF > nginx/conf.d/chromium.conf
-server {
-    listen 80;
-    server_name _;
-
-EOF
-
-for i in $(seq 1 "$NUM_CONTAINERS"); do
-  USERNAME="user$i"
-  PORT=$(docker-compose config | grep "chromium_$i" -A 5 | grep -oP '\d+(?=:5800)')
-
-  cat <<EOL >> nginx/conf.d/chromium.conf
-    location /$USERNAME/ {
-        proxy_pass http://localhost:$PORT/;
-        proxy_set_header Host \$host;
-        proxy_set_header X-Real-IP \$remote_addr;
-        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto \$scheme;
-EOL
-
-  if [ "$PASS_CHOICE" != "3" ]; then
-    echo "        auth_basic \"Restricted\";" >> nginx/conf.d/chromium.conf
-    echo "        auth_basic_user_file /etc/nginx/.htpasswd;" >> nginx/conf.d/chromium.conf
-  fi
-
-  echo "    }" >> nginx/conf.d/chromium.conf
-done
-
-echo "}" >> nginx/conf.d/chromium.conf
-
-# Add NGINX to docker-compose
+# Add Nginx reverse proxy
 cat <<EOF >> docker-compose.yml
 
   nginx:
     image: nginx:alpine
-    container_name: nginx_proxy
-    volumes:
-      - ./nginx/conf.d:/etc/nginx/conf.d
-      - ./nginx/htpasswd:/etc/nginx/.htpasswd
+    container_name: nginx
     ports:
       - "80:80"
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./htpasswd:/etc/nginx/.htpasswd:ro
     depends_on:
+$(for i in $(seq 1 $COUNT); do echo "      - chromium_$i"; done)
+    restart: unless-stopped
 EOF
 
-for i in $(seq 1 "$NUM_CONTAINERS"); do
-  echo "      - chromium_$i" >> docker-compose.yml
+# NGINX config
+cat <<EOF > nginx.conf
+events {}
+http {
+    server {
+        listen 80;
+        auth_basic "Restricted Access";
+EOF
+
+if [ "$PASS_OPTION" != "3" ]; then
+  echo '        auth_basic_user_file /etc/nginx/.htpasswd;' >> nginx.conf
+fi
+
+for i in $(seq 1 $COUNT); do
+  echo "        location /user$i/ {" >> nginx.conf
+  echo "            proxy_pass http://chromium_$i:3000/;" >> nginx.conf
+  echo "            proxy_set_header Host \$host;" >> nginx.conf
+  echo "        }" >> nginx.conf
 done
 
-echo "    restart: unless-stopped" >> docker-compose.yml
+echo "    }" >> nginx.conf
+echo "}" >> nginx.conf
 
-# Auto-start the farm
+# Rename password file if used
+if [ "$PASS_OPTION" != "3" ]; then
+  mv .htpasswd htpasswd
+fi
+
 echo ""
 echo "🚀 Starting your Chromium farm..."
 docker-compose up -d
 
 echo ""
 echo "✅ All done!"
-echo "🧪 Access each browser at: http://<your-ip>/user1/, /user2/, etc."
+for i in $(seq 1 $COUNT); do
+  echo "🧪 Access: http://<your-ip>/user$i/"
+done
 echo "🌐 Powered by Saint Khen (@admirkhen)"
