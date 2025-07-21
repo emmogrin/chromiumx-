@@ -36,8 +36,15 @@ chmod +x chromiumx.sh
 ./chromiumx.sh
 ```
 
+
+to remove chromium container
+```
+chmod +x remove_chromium.sh
+./remove_chromium.sh 
+```
+
 🔗 Access container 1:
-http://your-vps-ip:8080
+http://your-vps-ip:8085
 🔐 Password: yourpassword
 
 Each container runs independently in its own port (e.g. 8080, 8081, etc.).
