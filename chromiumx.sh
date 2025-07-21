@@ -69,7 +69,7 @@ for i in $(seq 1 "$NUM_CONTAINERS"); do
 
   cat <<EOF >> docker-compose.yml
   $CONTAINER_NAME:
-    image: jlesage/chromium
+    image: browserless/chrome
     container_name: $CONTAINER_NAME
     ports:
       - "$PORT:5800"
