@@ -27,7 +27,7 @@ ChromiumX is a simple Bash automation that spins up secure browser environments 
 
 ## 🚀 One-Click Setup
 
-### 📦 Clone and run:
+### 📦 Clone and run: (if incase you want to add more, use this same code) 
 
 ```bash
 git clone https://github.com/emmogrin/chromiumx-.git
